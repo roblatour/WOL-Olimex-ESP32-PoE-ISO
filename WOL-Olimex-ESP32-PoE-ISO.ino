@@ -32,7 +32,7 @@ const int User_Button = 34;
 // Default MAC Address to wake up when user button is pressed
 // Note: This will be updated to the last MAC update sent via Pushbullet each time a Pushbullet note is sent
 // it can be either be set to the default MAC Address of PC to wake up or left blank
-// format is:  xx:xx;xx:xx:xx;xx
+// format is:  xx:xx:xx:xx:xx:xx
 String Default_MAC_Address = "A1:B2:C3:D4:E5:F6";  
 
 // Pushbullet
