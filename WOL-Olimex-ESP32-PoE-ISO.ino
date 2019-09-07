@@ -4,7 +4,7 @@
     license: MIT
 
     usage: wakeup your computer (WOL) triggered by a Pushbullet note
- 
+
     board: OLKMEX ESP32-POE-ISO board
 
     with special thanks to those that developed these libraries:
@@ -26,25 +26,32 @@
 #include <WiFiUdp.h>
 #include <WakeOnLan.h>
 
+// Type of the Ethernet PHY (LAN8720 or TLK110)
+// #define ETH_TYPE        ETH_PHY_LAN8720
+// #define ETH_TYPE        ETH_PHY_TLK110
+
 // User button on the OLKMEX ESP32-POE-ISO board
 const int User_Button = 34;
+
+// LED on pin 15
+const int LED = 15;
 
 // Default MAC Address to wake up when user button is pressed
 // Note: This will be updated to the last MAC update sent via Pushbullet each time a Pushbullet note is sent
 // it can be either be set to the default MAC Address of PC to wake up or left blank
-// format is:  xx:xx:xx:xx:xx:xx
-String Default_MAC_Address = "A1:B2:C3:D4:E5:F6";  
+// format is:  xx:xx;xx:xx:xx;xx
+String Default_MAC_Address = "A1:B2:C3:D4:E5:F6";
 
 // Pushbullet
 const String Pushbullet_Note_Title_To_React_To = "Wakeup On LAN";
 const String My_PushBullet_Access_Token = "**********************************";
+
 const String PushBullet_Server = "stream.pushbullet.com";
 const String PushBullet_Server_Directory = "/websocket/";
 const int PushBullet_Server_Port = 443;
 const char* host = "api.pushbullet.com";
 const int https_Port = 443;
 bool PushBullet_connected = false;
-
 
 //*****************  button used to manually trigger wol
 void Setup_Button() {
@@ -96,16 +103,18 @@ static bool eth_connected = false;
 void WiFiEvent(WiFiEvent_t event)
 {
   switch (event) {
+
     case SYSTEM_EVENT_ETH_START:
       Serial.println(" ");
       Serial.println("ETH Started");
-      //set eth hostname here
-      ETH.setHostname("esp32-ethernet");
+      ETH.setHostname("WOL-server");
       break;
+
     case SYSTEM_EVENT_ETH_CONNECTED:
       Serial.println(" ");
       Serial.println("ETH Connected");
       break;
+
     case SYSTEM_EVENT_ETH_GOT_IP:
       Serial.print("ETH MAC: ");
       Serial.print(ETH.macAddress());
@@ -119,17 +128,42 @@ void WiFiEvent(WiFiEvent_t event)
       Serial.println("Mbps");
       eth_connected = true;
       break;
+
     case SYSTEM_EVENT_ETH_DISCONNECTED:
       Serial.println("ETH Disconnected");
       eth_connected = false;
       break;
+
     case SYSTEM_EVENT_ETH_STOP:
       Serial.println("ETH Stopped");
       eth_connected = false;
       break;
+
     default:
       break;
   }
+}
+
+//*****************  LED
+
+void LedOn(bool TurnLEDOn) {
+
+  if (TurnLEDOn) {
+    digitalWrite(LED, HIGH);
+  }
+  else
+  {
+    digitalWrite(LED, LOW);
+  }
+
+}
+void flashLED(int FlashTime) {
+
+  LedOn(true);
+  delay(FlashTime / 2);
+  LedOn(false);
+  delay(FlashTime / 2);
+
 }
 
 //*****************  Pushbullet
@@ -182,6 +216,15 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
 
         DynamicJsonDocument jsonDocument(4096);
         deserializeJson(jsonDocument, payload);
+
+
+        if (jsonDocument["type"] == "nop") {
+
+          Serial.println("nop");
+          // flash the LED to show pushbullet connection is still alive
+          flashLED(500);
+
+        }
 
         if ((jsonDocument["type"] == "tickle") && (jsonDocument["subtype"] == "push")) {
 
@@ -259,6 +302,7 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
 
               // wake up on lan
               SendMagicPacket(Body_Of_Incoming_Push);
+              flashLED(2000);
 
               // Dismiss push if required
               if (!Dismissed) {
@@ -393,18 +437,26 @@ void SendMagicPacket(String MAC_Address) {
 
 }
 
+
+
 void setup()
 {
 
   Serial.begin(115200);
+
+  pinMode(LED, OUTPUT);
+  LedOn(true);
 
   WiFi.onEvent(WiFiEvent);
   ETH.begin();
 
   while (!eth_connected) {
     Serial.print(".");
-    delay(250);
+    flashLED(500);
   }
+
+  Serial.println(" ");
+  Serial.println("Ethernet connected!");
   Serial.println(" ");
 
   Setup_Button();
@@ -419,4 +471,4 @@ void loop()
   Check_Button();
   webSocket.loop();
 
-}
+};
