@@ -5,12 +5,16 @@
 
     usage: wakeup your computer (WOL) triggered by a Pushbullet note
 
-    board: OLKMEX ESP32-POE-ISO board
+    Additional boards manager
+      https://dl.espressif.com/dl/package_esp32_dev_index.json
+
+    board: OLKMEX ESP32-POE
+      esp32       1.0.2   https://github.com/espressif/arduino-esp32
 
     with special thanks to those that developed these libraries:
-      JSON        6.11.2   https://arduinojson.org/?utm_source=meta&utm_medium=library.properties
+      JSON        6.12     https://arduinojson.org/?utm_source=meta&utm_medium=library.properties
       WakeOnLAN   1.1.6    https://github.com/a7md0/WakeOnLan
-      Websockets  1.0.1    https://github.com/julioterra/yunSpacebrew
+      Websockets  2.1.4    https://github.com/Links2004/arduinoWebSockets
 
 */
 
@@ -18,39 +22,42 @@
 #include <ArduinoJson.h>
 #include <WiFiClientSecure.h>
 #include <WebSocketsClient.h>
-#include <time.h>
 
 #include <ETH.h>
+
+// Type of the Ethernet PHY (LAN8720 or TLK110)
+// #define ETH_TYPE        ETH_PHY_LAN8720
+// #define ETH_TYPE        ETH_PHY_TLK110
 
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include <WakeOnLan.h>
 
-// Type of the Ethernet PHY (LAN8720 or TLK110)
-// #define ETH_TYPE        ETH_PHY_LAN8720
-// #define ETH_TYPE        ETH_PHY_TLK110
+#include <time.h>
+#include <TimeLib.h>
 
 // User button on the OLKMEX ESP32-POE-ISO board
 const int User_Button = 34;
 
 // LED
 // NOTE: The use of a LED is optional
-//       However, if you use it be very sure to connect it by putting an appropriate resistor between the 
-//       LED and the ESP32-PoE-ISO pin that controls the LED.  I did not do this and ended up rendering 
+//       However, if you use it be very sure to connect it by putting an appropriate resistor between the
+//       LED and the ESP32-PoE-ISO pin that controls the LED.  I did not do this and ended up rendering
 //       my ESP32-PoE-ISO card permanently useless :-(
-//       
+//
 // If you use the LED, it will blink:
 //    - quickly until the card connects to the LAN
 //    - once every 30 seconds or so for a second when Pushbullet returns a 'nop' indicating the connection is still good
 //    - once for about two and a half seconds when a WOL magic packet is sent
 //
 // ESP32-PoE-ISO pin to control the LED
+
 const int LED = 32;
 
 // Default MAC Address to wake up when user button is pressed
 // Note: This will be updated to the last MAC update sent via Pushbullet each time a Pushbullet note is sent
 // it can be either be set to the default MAC Address of PC to wake up or left blank
-// format is:  xx:xx:xx:xx:xx:xx
+// format is:  xx:xx;xx:xx:xx;xx
 String Default_MAC_Address = "A1:B2:C3:D4:E5:F6";
 
 // Pushbullet
@@ -63,6 +70,15 @@ const int PushBullet_Server_Port = 443;
 const char* host = "api.pushbullet.com";
 const int https_Port = 443;
 bool PushBullet_connected = false;
+
+//Time stuff
+unsigned long  StartupTime;
+unsigned long  LastNOPTime;
+unsigned long  secondsSinceStartup;
+unsigned long  secondsSinceLastNop;
+
+const unsigned long  RebootAfterThisManySecondsSinceLastStartup = 300;  // 5 minutes
+const unsigned long  RebootAfterThisManySecondsWithoutANOP = 180;       // 2 minutes
 
 //*****************  button used to manually trigger wol
 void Setup_Button() {
@@ -160,12 +176,12 @@ void WiFiEvent(WiFiEvent_t event)
 void LedOn(bool TurnLEDOn) {
 
   if (TurnLEDOn) {
-    Serial.println("turn LED on");
+    //Serial.println("turn LED on");
     digitalWrite(LED, HIGH);
   }
   else
   {
-    Serial.println("turn LED off");
+    //Serial.println("turn LED off");
     digitalWrite(LED, LOW);
   }
 
@@ -179,6 +195,15 @@ void flashLED(int FlashTime) {
 
 }
 
+//*****************  Time
+
+void Setup_Time() {
+
+  StartupTime = now();
+  LastNOPTime = now();
+
+}
+
 //*****************  Pushbullet
 
 WebSocketsClient webSocket;
@@ -186,14 +211,14 @@ WebSocketsClient webSocket;
 void Setup_PushBullet() {
 
   Serial.println("Setting up Pushbullet");
-  Serial.println("Connecting to Pushbullet ");
 
   String PushBullet_Server_DirectoryAndAccessToken = PushBullet_Server_Directory + My_PushBullet_Access_Token;
   webSocket.beginSSL(PushBullet_Server, PushBullet_Server_Port, PushBullet_Server_DirectoryAndAccessToken);
 
-  webSocket.onEvent(webSocketEvent);      // event handler
   webSocket.setReconnectInterval(5000);   // try ever 5000 again if connection has failed
+  webSocket.onEvent(webSocketEvent);      // event handler
 
+  Serial.println("Connecting to Pushbullet ");
   while (!PushBullet_connected) {
     Serial.print(".");
     webSocket.loop();
@@ -234,6 +259,8 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
         if (jsonDocument["type"] == "nop") {
 
           Serial.println("nop");
+          LastNOPTime = now();
+
           // flash the LED to show pushbullet connection is still alive
           flashLED(2000);
 
@@ -304,7 +331,7 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
 
             if (Dismissed) {
               Serial.println(" ; dismissed = true");
-            } else {   
+            } else {
               Serial.println(" ; dismissed = false");
             }
 
@@ -451,7 +478,6 @@ void SendMagicPacket(String MAC_Address) {
 }
 
 
-
 void setup()
 {
 
@@ -473,8 +499,9 @@ void setup()
   Serial.println(" ");
 
   Setup_Button();
-  Setup_PushBullet();
+  Setup_Time();
   Setup_WOL();
+  Setup_PushBullet();
 
 }
 
@@ -482,6 +509,31 @@ void loop()
 {
 
   Check_Button();
+
   webSocket.loop();
+
+  if ( eth_connected ) {
+    if ( !PushBullet_connected ) {
+      Setup_PushBullet();
+    }
+  }
+
+  // Failsafe: If a nop was not received in the specified time (default 2 minutes)
+  // and its been over a specified time since startup (default 5 minutes) 
+  // then restart the system
+
+  secondsSinceLastNop = now() - LastNOPTime;
+
+  if ( secondsSinceLastNop > RebootAfterThisManySecondsWithoutANOP ) {
+
+    secondsSinceStartup = now() - StartupTime;
+    if ( secondsSinceStartup > RebootAfterThisManySecondsSinceLastStartup) {
+
+      Serial.println("Restart!");
+      ESP.restart();
+
+    }
+
+  }
 
 };
