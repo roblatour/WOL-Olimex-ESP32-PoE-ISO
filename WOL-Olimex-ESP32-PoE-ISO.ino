@@ -80,6 +80,25 @@ unsigned long  secondsSinceLastNop;
 const unsigned long  RebootAfterThisManySecondsSinceLastStartup = 300;  // 5 minutes
 const unsigned long  RebootAfterThisManySecondsWithoutANOP = 180;       // 2 minutes
 
+
+//*****************  LED
+
+void Setup_LED() {
+
+  pinMode(LED, OUTPUT);
+  LedOn(true);
+
+}
+
+void flashLED(int FlashTime) {
+
+  LedOn(true);
+  delay(FlashTime / 2);
+  LedOn(false);
+  delay(FlashTime / 2);
+
+}
+
 //*****************  button used to manually trigger wol
 void Setup_Button() {
 
@@ -186,14 +205,6 @@ void LedOn(bool TurnLEDOn) {
   }
 
 }
-void flashLED(int FlashTime) {
-
-  LedOn(true);
-  delay(FlashTime / 2);
-  LedOn(false);
-  delay(FlashTime / 2);
-
-}
 
 //*****************  Time
 
@@ -201,6 +212,29 @@ void Setup_Time() {
 
   StartupTime = now();
   LastNOPTime = now();
+
+}
+
+//*****************  Failsafe check to see if reset is needed
+
+void CheckForReset()
+{
+  // Failsafe: If a nop was not received in the specified time (default 2 minutes)
+  // and its been over a specified time since startup (default 5 minutes)
+  // then restart the system
+
+  secondsSinceLastNop = now() - LastNOPTime;
+
+  if ( secondsSinceLastNop > RebootAfterThisManySecondsWithoutANOP ) {
+
+    secondsSinceStartup = now() - StartupTime;
+    if ( secondsSinceStartup > RebootAfterThisManySecondsSinceLastStartup) {
+
+      Serial.println("Restart!");
+      ESP.restart();
+
+    }
+  }
 
 }
 
@@ -483,8 +517,11 @@ void setup()
 
   Serial.begin(115200);
 
-  pinMode(LED, OUTPUT);
-  LedOn(true);
+  Serial.println("Startup underway");
+
+  Setup_LED();
+  Setup_Button();
+  Setup_Time();
 
   WiFi.onEvent(WiFiEvent);
   ETH.begin();
@@ -492,18 +529,18 @@ void setup()
   while (!eth_connected) {
     Serial.print(".");
     flashLED(250);
+    CheckForReset();
   }
 
   Serial.println(" ");
   Serial.println("Ethernet connected!");
   Serial.println(" ");
 
-  Setup_Button();
-  Setup_Time();
   Setup_WOL();
   Setup_PushBullet();
 
-}
+};
+
 
 void loop()
 {
@@ -513,26 +550,12 @@ void loop()
   webSocket.loop();
 
   if ( eth_connected ) {
+
     if ( !PushBullet_connected ) {
       Setup_PushBullet();
     }
-  }
 
-  // Failsafe: If a nop was not received in the specified time (default 2 minutes)
-  // and its been over a specified time since startup (default 5 minutes) 
-  // then restart the system
-
-  secondsSinceLastNop = now() - LastNOPTime;
-
-  if ( secondsSinceLastNop > RebootAfterThisManySecondsWithoutANOP ) {
-
-    secondsSinceStartup = now() - StartupTime;
-    if ( secondsSinceStartup > RebootAfterThisManySecondsSinceLastStartup) {
-
-      Serial.println("Restart!");
-      ESP.restart();
-
-    }
+    CheckForReset();
 
   }
 
