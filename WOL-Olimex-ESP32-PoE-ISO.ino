@@ -78,7 +78,7 @@ unsigned long  secondsSinceStartup;
 unsigned long  secondsSinceLastNop;
 
 const unsigned long  RebootAfterThisManySecondsSinceLastStartup = 300;  // 5 minutes
-const unsigned long  RebootAfterThisManySecondsWithoutANOP = 180;       // 2 minutes
+const unsigned long  RebootAfterThisManySecondsWithoutANOP = 180;       // 3 minutes
 
 
 //*****************  LED
