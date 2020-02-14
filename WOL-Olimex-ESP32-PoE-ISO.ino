@@ -66,6 +66,7 @@ const String My_PushBullet_Access_Token = "**********************************";
 
 const String PushBullet_Server = "stream.pushbullet.com";
 const String PushBullet_Server_Directory = "/websocket/";
+const String PushBullet_KeepAlive_ID = "rob_wol_active";
 const int PushBullet_Server_Port = 443;
 const char* host = "api.pushbullet.com";
 const char* KeepAliveHost = "zebra.pushbullet.com";
@@ -246,6 +247,8 @@ void CheckForReset()
 }
 
 
+//*****************  Pushbullet
+
 //*****************  every 24 hours send a request to keep the Pushbullet account alive (with out this it would expire every 30 days)
 
 void KeepPushBulletAccountAlive()
@@ -261,8 +264,6 @@ void KeepPushBulletAccountAlive()
   }
 
 }
-
-//*****************  Pushbullet
 
 WebSocketsClient webSocket;
 
@@ -284,6 +285,7 @@ void Setup_PushBullet() {
   }
 
   GetPushbulletClientID();
+  PushbulletStayAlive();
 
   Serial.println("Pushbullet has been setup");
   Serial.println(" ");
@@ -572,7 +574,7 @@ void PushbulletStayAlive() {
     return;
   }
 
-  String Pushbullet_Message_Out = " { \"name\": \"rob_wol_active\", \"user_iden\": \"" + My_PushBullet_Client_ID  + "\" }";
+  String Pushbullet_Message_Out = " { \"name\": \"" + PushBullet_KeepAlive_ID + "\", \"user_iden\": \"" + My_PushBullet_Client_ID  + "\" }";
 
   client.println("POST / HTTP/1.1");
   client.println("Host: " + String(host));
@@ -613,7 +615,7 @@ void PushbulletStayAlive() {
     Serial.println("failed");
     Serial.println(Response);
   }
-  
+
 
 }
 
@@ -670,8 +672,6 @@ void setup()
 
   Setup_WOL();
   Setup_PushBullet();
-
-  PushbulletStayAlive();
 
 };
 
