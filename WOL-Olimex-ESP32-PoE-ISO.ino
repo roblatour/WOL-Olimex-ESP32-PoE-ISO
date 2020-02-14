@@ -1,5 +1,5 @@
 /*
-    This sketch was developed by Rob Latour Copyright (c) 2019
+    This sketch was developed by Rob Latour Copyright (c) 2019 - 2020
 
     license: MIT
 
@@ -68,18 +68,24 @@ const String PushBullet_Server = "stream.pushbullet.com";
 const String PushBullet_Server_Directory = "/websocket/";
 const int PushBullet_Server_Port = 443;
 const char* host = "api.pushbullet.com";
+const char* KeepAliveHost = "zebra.pushbullet.com";
 const int https_Port = 443;
 bool PushBullet_connected = false;
+String My_PushBullet_Client_ID = "";
 
 //Time stuff
 unsigned long  StartupTime;
 unsigned long  LastNOPTime;
+unsigned long  LastKeepAliveRequest;
+
 unsigned long  secondsSinceStartup;
 unsigned long  secondsSinceLastNop;
+unsigned long  secondsSinceLastKeepAliveRequest;
 
 const unsigned long  RebootAfterThisManySecondsSinceLastStartup = 300;  // 5 minutes
 const unsigned long  RebootAfterThisManySecondsWithoutANOP = 180;       // 3 minutes
 
+const unsigned long  TwentyFourHours = 86400; // 24 hours * 60 minutes * 60 seconds
 
 //*****************  LED
 
@@ -212,6 +218,7 @@ void Setup_Time() {
 
   StartupTime = now();
   LastNOPTime = now();
+  LastKeepAliveRequest = now();
 
 }
 
@@ -238,6 +245,23 @@ void CheckForReset()
 
 }
 
+
+//*****************  every 24 hours send a request to keep the Pushbullet account alive (with out this it would expire every 30 days)
+
+void KeepPushBulletAccountAlive()
+{
+
+  secondsSinceLastKeepAliveRequest = now() - LastKeepAliveRequest;
+
+  if ( secondsSinceLastKeepAliveRequest > TwentyFourHours ) {
+
+    PushbulletStayAlive();
+    LastKeepAliveRequest = now();
+
+  }
+
+}
+
 //*****************  Pushbullet
 
 WebSocketsClient webSocket;
@@ -258,6 +282,8 @@ void Setup_PushBullet() {
     webSocket.loop();
     delay(250);
   }
+
+  GetPushbulletClientID();
 
   Serial.println("Pushbullet has been setup");
   Serial.println(" ");
@@ -485,6 +511,112 @@ void PushbulletDismissPush(String Push_Iden) {
 
 }
 
+
+void GetPushbulletClientID() {
+
+  WiFiClientSecure client1;
+  if (!client1.connect(host, https_Port)) {
+    Serial.println("Connection failed");
+    return;
+  }
+
+  client1.println("GET /v2/users/me HTTP/1.1");
+  client1.println("Host: " + String(host));
+  client1.println("Authorization: Bearer " + My_PushBullet_Access_Token);
+  client1.println("Content-Type : application/json");
+  client1.println("Content-Length : 0");
+  client1.println();
+
+  // Serial.print(" waiting for the details ");
+  int WaitLimit = 0;
+  while ((!client1.available()) && (WaitLimit < 250)) {
+    delay(50);
+    WaitLimit++;
+  }
+
+  WaitLimit = 0;
+  while ( (client1.connected()) && (WaitLimit < 250) ) {
+    String line = client1.readStringUntil('\n');
+    if (line == "\r") {
+      // retrieved header lines can be ignored
+      break;
+    }
+    WaitLimit++;
+  }
+
+  String Response = "";
+  while (client1.available()) {
+    char c = client1.read();
+    Response += c;
+  }
+
+  // Serial.println(Response);
+
+  client1.stop();
+
+  DynamicJsonDocument jsonDocument(4096);
+  deserializeJson(jsonDocument, Response);
+  String cid = jsonDocument["iden"];
+  My_PushBullet_Client_ID = cid;
+
+}
+
+void PushbulletStayAlive() {
+
+  Serial.print("stay alive request ");
+
+  WiFiClientSecure client;
+
+  if (!client.connect(KeepAliveHost, https_Port)) {
+    Serial.println(" connection failed");
+    return;
+  }
+
+  String Pushbullet_Message_Out = " { \"name\": \"rob_wol_active\", \"user_iden\": \"" + My_PushBullet_Client_ID  + "\" }";
+
+  client.println("POST / HTTP/1.1");
+  client.println("Host: " + String(host));
+  client.println("Authorization: Bearer " + My_PushBullet_Access_Token);
+  client.println("Content-Type: application/json");
+  client.println("Content-Length: " + String(Pushbullet_Message_Out.length()));
+  client.println();
+  client.println(Pushbullet_Message_Out);
+
+  int WaitLimit = 0;
+  while ((!client.available()) && (WaitLimit < 250)) {
+    delay(50); //
+    WaitLimit++;
+  }
+
+  String Response = "";
+  WaitLimit = 0;
+  while ( (client.connected()) && (WaitLimit < 250) ) {
+    String line = client.readStringUntil('\n');
+    if (line == "\r") {
+      // retrieved header lines can be ignored
+      break;
+    }
+    WaitLimit++;
+  }
+
+  while (client.available()) {
+    char c = client.read();
+    Response += c;
+  }
+
+  client.stop();
+
+  if (Response == "{}") {
+    Serial.println("succeeded");
+  }
+  else {
+    Serial.println("failed");
+    Serial.println(Response);
+  }
+  
+
+}
+
 //*****************  wol
 // with thanks to https://github.com/a7md0/WakeOnLan
 
@@ -539,6 +671,8 @@ void setup()
   Setup_WOL();
   Setup_PushBullet();
 
+  PushbulletStayAlive();
+
 };
 
 
@@ -554,6 +688,8 @@ void loop()
     if ( !PushBullet_connected ) {
       Setup_PushBullet();
     }
+
+    KeepPushBulletAccountAlive();
 
     CheckForReset();
 
