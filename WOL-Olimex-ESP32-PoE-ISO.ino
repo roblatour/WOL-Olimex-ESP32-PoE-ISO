@@ -12,9 +12,10 @@
       esp32       1.0.2   https://github.com/espressif/arduino-esp32
 
     with special thanks to those that developed these libraries:
-      JSON        6.12     https://arduinojson.org/?utm_source=meta&utm_medium=library.properties
-      WakeOnLAN   1.1.6    https://github.com/a7md0/WakeOnLan
-      Websockets  2.1.4    https://github.com/Links2004/arduinoWebSockets
+      JSON        6.12     by Benoit Blachon    https://arduinojson.org/?utm_source=meta&utm_medium=library.properties
+      WakeOnLAN   1.1.6    by a7md0             https://github.com/a7md0/WakeOnLan
+      Websockets  2.1.4    by Markus Sattle     https://github.com/Links2004/arduinoWebSockets
+      Time        1.6.0    by Michael Margolis  https://playground.arduino.cc/code/time/
 
 */
 
